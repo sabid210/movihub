@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1045914929951",
+    "project_id": "movihub-3f0d1",
+    "storage_bucket": "movihub-3f0d1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1045914929951:android:a78876ff4ff2e799417e2a",
+        "android_client_info": {
+          "package_name": "com.movihub.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBfiRS-ENnHr7SRnRQ-UyQAVyRtRfkt36o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

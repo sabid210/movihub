@@ -1,0 +1,56 @@
+name: movihub
+description: "A Flutter movie discovery and review app with Firebase backend."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ── Firebase ────────────────────────────────────────────
+  firebase_core:     ^3.6.0
+  firebase_auth:     ^5.3.1
+  cloud_firestore:   ^5.4.4
+  firebase_storage:  ^12.3.2
+
+  # ── Google Sign In ───────────────────────────────────────
+  google_sign_in:    ^6.2.1
+
+  # ── State Management ─────────────────────────────────────
+  provider:          ^6.1.2
+
+  # ── Navigation ───────────────────────────────────────────
+  go_router:         ^14.2.7
+
+  # ── HTTP & API ────────────────────────────────────────────
+  http:              ^1.2.2
+
+  # ── Image ─────────────────────────────────────────────────
+  cached_network_image: ^3.4.1
+
+  # ── UI ────────────────────────────────────────────────────
+  cupertino_icons:   ^1.0.8
+  google_fonts:      ^6.2.1
+  flutter_rating_bar: ^4.0.1
+  shimmer:           ^3.0.0
+
+  # ── Local Storage ─────────────────────────────────────────
+  shared_preferences: ^2.3.2
+
+  # ── Utilities ─────────────────────────────────────────────
+  intl:              ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints:     ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
