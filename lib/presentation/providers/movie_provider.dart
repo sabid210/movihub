@@ -16,26 +16,41 @@ class MovieProvider extends ChangeNotifier {
   List<MovieModel> _topRatedMovies  = [];
   MovieModel?      _featuredMovie;
 
-  bool    _isLoading = false;
+  bool    _isLoading        = false;
   String? _error;
-
-  int _ratedMoviesCount = 0;
-  int _watchedCount     = 0;
+  int     _ratedMoviesCount = 0;
+  int     _watchedCount     = 0;
 
   // ── Getters ────────────────────────────────────────────────────────────────
-  List<MovieModel> get trendingMovies  => _trendingMovies;
-  List<MovieModel> get newReleases     => _newReleases;
-  List<MovieModel> get topRatedMovies  => _topRatedMovies;
-  MovieModel?      get featuredMovie   => _featuredMovie;
-  bool             get isLoading       => _isLoading;
-  String?          get error           => _error;
+  List<MovieModel> get trendingMovies   => _trendingMovies;
+  List<MovieModel> get newReleases      => _newReleases;
+  List<MovieModel> get topRatedMovies   => _topRatedMovies;
+  MovieModel?      get featuredMovie    => _featuredMovie;
+  bool             get isLoading        => _isLoading;
+  String?          get error            => _error;
   int              get ratedMoviesCount => _ratedMoviesCount;
-  int              get watchedCount    => _watchedCount;
+  int              get watchedCount     => _watchedCount;
 
-  // ── TMDB config ────────────────────────────────────────────────────────────
-  // Replace with your own TMDB API key from https://www.themoviedb.org/settings/api
+  // ── TMDB Config ────────────────────────────────────────────────────────────
   static const String _apiKey  = 'bbe699b7c07385e0aa7d055715d21d04';
   static const String _baseUrl = 'https://api.themoviedb.org/3';
+
+  // ── TMDB Genre ID map ──────────────────────────────────────────────────────
+  static const Map<String, int> genreNameToId = {
+    'All':       0,
+    'Action':    28,
+    'Adventure': 12,
+    'Animation': 16,
+    'Comedy':    35,
+    'Crime':     80,
+    'Drama':     18,
+    'Fantasy':   14,
+    'Horror':    27,
+    'Mystery':   9648,
+    'Romance':   10749,
+    'Sci-Fi':    878,
+    'Thriller':  53,
+  };
 
   // ── Fetch all movies ───────────────────────────────────────────────────────
   Future<void> fetchAllMovies() async {
@@ -49,14 +64,11 @@ class MovieProvider extends ChangeNotifier {
         _fetchTopRated(),
       ]);
 
-      // Set featured movie from trending
       if (_trendingMovies.isNotEmpty) {
         _featuredMovie = _trendingMovies.first;
       }
 
-      // Load user stats
       await _loadUserStats();
-
       _setLoading(false);
     } catch (e) {
       _error = 'Failed to load movies. Check your connection.';
@@ -67,14 +79,14 @@ class MovieProvider extends ChangeNotifier {
   // ── Fetch trending ─────────────────────────────────────────────────────────
   Future<void> _fetchTrending() async {
     final url = Uri.parse('$_baseUrl/trending/movie/week?api_key=$_apiKey');
-    final res  = await http.get(url);
+    final res = await http.get(url).timeout(const Duration(seconds: 10));
 
     if (res.statusCode == 200) {
       final data    = json.decode(res.body);
       final results = data['results'] as List<dynamic>;
       _trendingMovies = results
-          .take(10)
-          .map((m) => MovieModel.fromJson(m))
+          .take(15)
+          .map((m) => MovieModel.fromJson(m as Map<String, dynamic>))
           .toList();
     } else {
       throw Exception('Trending fetch failed');
@@ -83,29 +95,28 @@ class MovieProvider extends ChangeNotifier {
 
   // ── Fetch new releases ─────────────────────────────────────────────────────
   Future<void> _fetchNewReleases() async {
-    final now       = DateTime.now();
-    final monthAgo  = now.subtract(const Duration(days: 30));
-    final fromDate  = '${monthAgo.year}-${_pad(monthAgo.month)}-${_pad(monthAgo.day)}';
-    final toDate    = '${now.year}-${_pad(now.month)}-${_pad(now.day)}';
+    final now      = DateTime.now();
+    final monthAgo = now.subtract(const Duration(days: 60));
+    final from = '${monthAgo.year}-${_pad(monthAgo.month)}-${_pad(monthAgo.day)}';
+    final to   = '${now.year}-${_pad(now.month)}-${_pad(now.day)}';
 
     final url = Uri.parse(
       '$_baseUrl/discover/movie'
       '?api_key=$_apiKey'
-      '&primary_release_date.gte=$fromDate'
-      '&primary_release_date.lte=$toDate'
+      '&primary_release_date.gte=$from'
+      '&primary_release_date.lte=$to'
       '&sort_by=popularity.desc',
     );
-
-    final res = await http.get(url);
+    final res = await http.get(url).timeout(const Duration(seconds: 10));
 
     if (res.statusCode == 200) {
       final data    = json.decode(res.body);
       final results = data['results'] as List<dynamic>;
-      _newReleases  = results
-          .take(10)
-          .map((m) => MovieModel.fromJson(m
-            ..['isNewRelease'] = true))
-          .toList();
+      _newReleases  = results.take(15).map((m) {
+        final map = Map<String, dynamic>.from(m as Map);
+        map['isNewRelease'] = true;
+        return MovieModel.fromJson(map);
+      }).toList();
     } else {
       throw Exception('New releases fetch failed');
     }
@@ -113,39 +124,70 @@ class MovieProvider extends ChangeNotifier {
 
   // ── Fetch top rated ────────────────────────────────────────────────────────
   Future<void> _fetchTopRated() async {
-    final url = Uri.parse(
-      '$_baseUrl/movie/top_rated?api_key=$_apiKey',
-    );
-    final res = await http.get(url);
+    final url = Uri.parse('$_baseUrl/movie/top_rated?api_key=$_apiKey');
+    final res = await http.get(url).timeout(const Duration(seconds: 10));
 
     if (res.statusCode == 200) {
       final data    = json.decode(res.body);
       final results = data['results'] as List<dynamic>;
       _topRatedMovies = results
-          .take(10)
-          .map((m) => MovieModel.fromJson(m))
+          .take(15)
+          .map((m) => MovieModel.fromJson(m as Map<String, dynamic>))
           .toList();
     } else {
       throw Exception('Top rated fetch failed');
     }
   }
 
-  // ── Search movies ──────────────────────────────────────────────────────────
-  Future<List<MovieModel>> searchMovies(String query) async {
-    if (query.trim().isEmpty) return [];
+  // ── Fetch movies by genre from TMDB ───────────────────────────────────────
+  Future<List<MovieModel>> fetchByGenreName(String genreName) async {
+    if (genreName == 'All') return _trendingMovies;
+
+    final genreId = genreNameToId[genreName];
+    if (genreId == null) return [];
 
     try {
       final url = Uri.parse(
-        '$_baseUrl/search/movie?api_key=$_apiKey&query=${Uri.encodeComponent(query)}',
+        '$_baseUrl/discover/movie'
+        '?api_key=$_apiKey'
+        '&with_genres=$genreId'
+        '&sort_by=popularity.desc',
       );
-      final res = await http.get(url);
+      final res = await http.get(url).timeout(const Duration(seconds: 10));
+
+      if (res.statusCode == 200) {
+        final data    = json.decode(res.body);
+        final results = data['results'] as List<dynamic>;
+        return results
+            .take(15)
+            .map((m) => MovieModel.fromJson(m as Map<String, dynamic>))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('Error fetching by genre: $e');
+      return [];
+    }
+  }
+
+  // ── Search movies ──────────────────────────────────────────────────────────
+  Future<List<MovieModel>> searchMovies(String query) async {
+    if (query.trim().isEmpty) return [];
+    try {
+      final url = Uri.parse(
+        '$_baseUrl/search/movie'
+        '?api_key=$_apiKey'
+        '&query=${Uri.encodeComponent(query)}'
+        '&include_adult=false',
+      );
+      final res = await http.get(url).timeout(const Duration(seconds: 10));
 
       if (res.statusCode == 200) {
         final data    = json.decode(res.body);
         final results = data['results'] as List<dynamic>;
         return results
             .take(20)
-            .map((m) => MovieModel.fromJson(m))
+            .map((m) => MovieModel.fromJson(m as Map<String, dynamic>))
             .toList();
       }
       return [];
@@ -154,17 +196,19 @@ class MovieProvider extends ChangeNotifier {
     }
   }
 
-  // ── Fetch movie detail (with runtime) ──────────────────────────────────────
+  // ── Fetch movie detail ─────────────────────────────────────────────────────
   Future<MovieModel?> fetchMovieDetail(String movieId) async {
     try {
       final url = Uri.parse(
-        '$_baseUrl/movie/$movieId?api_key=$_apiKey&append_to_response=credits',
+        '$_baseUrl/movie/$movieId'
+        '?api_key=$_apiKey'
+        '&append_to_response=credits',
       );
-      final res = await http.get(url);
+      final res = await http.get(url).timeout(const Duration(seconds: 10));
 
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
-        return MovieModel.fromJson(data);
+        return MovieModel.fromJson(data as Map<String, dynamic>);
       }
       return null;
     } catch (e) {
@@ -172,7 +216,7 @@ class MovieProvider extends ChangeNotifier {
     }
   }
 
-  // ── Submit user rating ─────────────────────────────────────────────────────
+  // ── Submit rating ──────────────────────────────────────────────────────────
   Future<void> submitRating({
     required String movieId,
     required double rating,
@@ -181,7 +225,6 @@ class MovieProvider extends ChangeNotifier {
     if (uid == null) return;
 
     try {
-      // Save to Firestore
       await _firestore
           .collection('ratings')
           .doc('${uid}_$movieId')
@@ -199,7 +242,7 @@ class MovieProvider extends ChangeNotifier {
     }
   }
 
-  // ── Get user rating for a movie ────────────────────────────────────────────
+  // ── Get user rating ────────────────────────────────────────────────────────
   Future<double?> getUserRating(String movieId) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return null;
@@ -209,7 +252,6 @@ class MovieProvider extends ChangeNotifier {
           .collection('ratings')
           .doc('${uid}_$movieId')
           .get();
-
       if (doc.exists) {
         return (doc.data()!['rating'] as num).toDouble();
       }
@@ -225,14 +267,12 @@ class MovieProvider extends ChangeNotifier {
     if (uid == null) return;
 
     try {
-      // Rated count
       final ratingSnap = await _firestore
           .collection('ratings')
           .where('userId', isEqualTo: uid)
           .get();
       _ratedMoviesCount = ratingSnap.docs.length;
 
-      // Watched count (from Firestore watchlist)
       final watchSnap = await _firestore
           .collection('watchlist')
           .where('userId', isEqualTo: uid)
@@ -267,32 +307,7 @@ class MovieProvider extends ChangeNotifier {
     }
   }
 
-  // ── Fetch movies by genre ──────────────────────────────────────────────────
-  Future<List<MovieModel>> fetchByGenre(int genreId) async {
-    try {
-      final url = Uri.parse(
-        '$_baseUrl/discover/movie'
-        '?api_key=$_apiKey'
-        '&with_genres=$genreId'
-        '&sort_by=popularity.desc',
-      );
-      final res = await http.get(url);
-
-      if (res.statusCode == 200) {
-        final data    = json.decode(res.body);
-        final results = data['results'] as List<dynamic>;
-        return results
-            .take(15)
-            .map((m) => MovieModel.fromJson(m))
-            .toList();
-      }
-      return [];
-    } catch (e) {
-      return [];
-    }
-  }
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  // ── Helper ─────────────────────────────────────────────────────────────────
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();

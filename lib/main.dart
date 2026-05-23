@@ -9,6 +9,7 @@ import 'core/constants/app_theme.dart';
 import 'presentation/providers/auth_provider.dart';
 import 'presentation/providers/movie_provider.dart';
 import 'presentation/providers/favourites_provider.dart';
+import 'presentation/providers/theme_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,12 +43,19 @@ class MoviHubApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => MovieProvider()),
         ChangeNotifierProvider(create: (_) => FavouritesProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: MaterialApp.router(
-        title:                     'MoviHub',
-        debugShowCheckedModeBanner: false,
-        theme:                     AppTheme.darkTheme,
-        routerConfig:              AppRoutes.router,
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          return MaterialApp.router(
+            title:                     'MoviHub',
+            debugShowCheckedModeBanner: false,
+            theme: themeProvider.isDark
+                ? AppTheme.darkTheme
+                : AppTheme.lightTheme,
+            routerConfig: AppRoutes.router,
+          );
+        },
       ),
     );
   }

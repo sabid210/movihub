@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../data/models/movie_model.dart';
 import '../../providers/movie_provider.dart';
 import '../../providers/favourites_provider.dart';
 import '../../widgets/movie_card.dart';
@@ -52,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ── Bottom navigation bar ─────────────────────────────────────────────────────
+// ── Bottom Nav ────────────────────────────────────────────────────────────────
 class _BottomNav extends StatelessWidget {
   final int currentIndex;
   final void Function(int) onTap;
@@ -77,8 +78,7 @@ class _BottomNav extends StatelessWidget {
         selectedItemColor:   AppColors.primary,
         unselectedItemColor: AppColors.textHint,
         selectedLabelStyle: const TextStyle(
-          fontSize:   11,
-          fontWeight: FontWeight.w600,
+          fontSize: 11, fontWeight: FontWeight.w600,
         ),
         unselectedLabelStyle: const TextStyle(fontSize: 11),
         items: const [
@@ -108,7 +108,7 @@ class _BottomNav extends StatelessWidget {
   }
 }
 
-// ── Home body ─────────────────────────────────────────────────────────────────
+// ── Home Body ─────────────────────────────────────────────────────────────────
 class _HomeBody extends StatefulWidget {
   const _HomeBody();
 
@@ -117,26 +117,98 @@ class _HomeBody extends StatefulWidget {
 }
 
 class _HomeBodyState extends State<_HomeBody> {
-  int _selectedGenreIndex = 0;
+  int  _selectedGenreIndex = 0;
+  bool _genreLoading       = false;
+
+  // Genre filtered lists
+  List<MovieModel> _genreTrending    = [];
+  List<MovieModel> _genreNewReleases = [];
+  List<MovieModel> _genreTopRated   = [];
 
   final List<String> _genres = [
-    'All', 'Action', 'Drama', 'Sci-Fi', 'Horror', 'Comedy', 'Fantasy',
+    'All', 'Action', 'Comedy', 'Drama',
+    'Horror', 'Sci-Fi', 'Fantasy', 'Thriller',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Default: show all movies
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _updateGenreLists();
+    });
+  }
+
+  // Update lists when genre changes
+  void _updateGenreLists() {
+    final movies = context.read<MovieProvider>();
+    setState(() {
+      _genreTrending    = movies.trendingMovies;
+      _genreNewReleases = movies.newReleases;
+      _genreTopRated    = movies.topRatedMovies;
+    });
+  }
+
+  // On genre chip tap
+  Future<void> _onGenreTap(int index) async {
+    if (_selectedGenreIndex == index) return;
+    setState(() {
+      _selectedGenreIndex = index;
+      _genreLoading       = true;
+    });
+
+    final genreName = _genres[index];
+    final movies    = context.read<MovieProvider>();
+
+    if (genreName == 'All') {
+      setState(() {
+        _genreTrending    = movies.trendingMovies;
+        _genreNewReleases = movies.newReleases;
+        _genreTopRated    = movies.topRatedMovies;
+        _genreLoading     = false;
+      });
+      return;
+    }
+
+    // Fetch from TMDB by genre
+    final results = await movies.fetchByGenreName(genreName);
+
+    if (!mounted) return;
+    setState(() {
+      _genreTrending    = results;
+      _genreNewReleases = results
+          .where((m) => m.isNewRelease)
+          .toList();
+      _genreTopRated    = List<MovieModel>.from(results)
+        ..sort((a, b) => b.rating.compareTo(a.rating));
+      _genreLoading     = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final movies = context.watch<MovieProvider>();
 
+    // Sync when provider updates (e.g., after refresh)
+    if (!_genreLoading && _selectedGenreIndex == 0) {
+      _genreTrending    = movies.trendingMovies;
+      _genreNewReleases = movies.newReleases;
+      _genreTopRated    = movies.topRatedMovies;
+    }
+
     return SafeArea(
       child: RefreshIndicator(
         color:           AppColors.primary,
         backgroundColor: AppColors.surface,
-        onRefresh: () => context.read<MovieProvider>().fetchAllMovies(),
+        onRefresh: () async {
+          await movies.fetchAllMovies();
+          _updateGenreLists();
+        },
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [
 
-            // ── App bar ──────────────────────────────────────
+            // ── App bar ──────────────────────────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -184,8 +256,7 @@ class _HomeBodyState extends State<_HomeBody> {
                         color:        AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: AppColors.border,
-                          width: 0.5,
+                          color: AppColors.border, width: 0.5,
                         ),
                       ),
                       child: const Icon(
@@ -199,7 +270,7 @@ class _HomeBodyState extends State<_HomeBody> {
               ),
             ),
 
-            // ── Genre chips ───────────────────────────────────
+            // ── Genre chips ───────────────────────────────────────────────────
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 44,
@@ -211,8 +282,7 @@ class _HomeBodyState extends State<_HomeBody> {
                   itemBuilder: (_, i) {
                     final selected = i == _selectedGenreIndex;
                     return GestureDetector(
-                      onTap: () =>
-                          setState(() => _selectedGenreIndex = i),
+                      onTap: () => _onGenreTap(i),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         padding: const EdgeInsets.symmetric(
@@ -231,16 +301,25 @@ class _HomeBodyState extends State<_HomeBody> {
                             width: 0.5,
                           ),
                         ),
-                        child: Text(
-                          _genres[i],
-                          style: TextStyle(
-                            fontSize:   12,
-                            fontWeight: FontWeight.w500,
-                            color: selected
-                                ? Colors.white
-                                : AppColors.textMuted,
-                          ),
-                        ),
+                        child: _genreLoading && selected
+                            ? const SizedBox(
+                                width:  14,
+                                height: 14,
+                                child:  CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color:       Colors.white,
+                                ),
+                              )
+                            : Text(
+                                _genres[i],
+                                style: TextStyle(
+                                  fontSize:   12,
+                                  fontWeight: FontWeight.w500,
+                                  color: selected
+                                      ? Colors.white
+                                      : AppColors.textMuted,
+                                ),
+                              ),
                       ),
                     );
                   },
@@ -250,7 +329,7 @@ class _HomeBodyState extends State<_HomeBody> {
 
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-            // ── Featured banner ───────────────────────────────
+            // ── Featured banner ───────────────────────────────────────────────
             SliverToBoxAdapter(
               child: movies.isLoading
                   ? _FeaturedShimmer()
@@ -261,7 +340,7 @@ class _HomeBodyState extends State<_HomeBody> {
 
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
 
-            // ── Trending Now ──────────────────────────────────
+            // ── Trending Now ──────────────────────────────────────────────────
             SliverToBoxAdapter(
               child: _SectionHeader(
                 title:    AppStrings.trending,
@@ -269,25 +348,16 @@ class _HomeBodyState extends State<_HomeBody> {
               ),
             ),
             SliverToBoxAdapter(
-              child: SizedBox(
-                height: 260,
-                child: movies.isLoading
-                    ? _HorizontalShimmer()
-                    : ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                        itemCount: movies.trendingMovies.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(width: 12),
-                        itemBuilder: (_, i) =>
-                            MovieCard(movie: movies.trendingMovies[i]),
-                      ),
+              child: _buildMovieRow(
+                isLoading: movies.isLoading || _genreLoading,
+                movies:    _genreTrending,
+                genre:     _genres[_selectedGenreIndex],
               ),
             ),
 
             const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
-            // ── New Releases ──────────────────────────────────
+            // ── New Releases ──────────────────────────────────────────────────
             SliverToBoxAdapter(
               child: _SectionHeader(
                 title:    AppStrings.newRelease,
@@ -295,25 +365,18 @@ class _HomeBodyState extends State<_HomeBody> {
               ),
             ),
             SliverToBoxAdapter(
-              child: SizedBox(
-                height: 260,
-                child: movies.isLoading
-                    ? _HorizontalShimmer()
-                    : ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                        itemCount: movies.newReleases.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(width: 12),
-                        itemBuilder: (_, i) =>
-                            MovieCard(movie: movies.newReleases[i]),
-                      ),
+              child: _buildMovieRow(
+                isLoading: movies.isLoading || _genreLoading,
+                movies:    _selectedGenreIndex == 0
+                    ? _genreNewReleases
+                    : _genreTrending,
+                genre:     _genres[_selectedGenreIndex],
               ),
             ),
 
             const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
-            // ── Top Rated ─────────────────────────────────────
+            // ── Top Rated ─────────────────────────────────────────────────────
             SliverToBoxAdapter(
               child: _SectionHeader(
                 title:    AppStrings.topRated,
@@ -321,23 +384,14 @@ class _HomeBodyState extends State<_HomeBody> {
               ),
             ),
             SliverToBoxAdapter(
-              child: SizedBox(
-                height: 260,
-                child: movies.isLoading
-                    ? _HorizontalShimmer()
-                    : ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                        itemCount: movies.topRatedMovies.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(width: 12),
-                        itemBuilder: (_, i) =>
-                            MovieCard(movie: movies.topRatedMovies[i]),
-                      ),
+              child: _buildMovieRow(
+                isLoading: movies.isLoading || _genreLoading,
+                movies:    _genreTopRated,
+                genre:     _genres[_selectedGenreIndex],
               ),
             ),
 
-            // ── Error state ───────────────────────────────────
+            // ── Error ─────────────────────────────────────────────────────────
             if (movies.error != null)
               SliverToBoxAdapter(
                 child: Center(
@@ -355,14 +409,15 @@ class _HomeBodyState extends State<_HomeBody> {
                           movies.error!,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
-                            color:    AppColors.textMuted,
-                            fontSize: 13,
+                            color: AppColors.textMuted, fontSize: 13,
                           ),
                         ),
                         const SizedBox(height: 16),
                         TextButton(
-                          onPressed: () =>
-                              context.read<MovieProvider>().fetchAllMovies(),
+                          onPressed: () {
+                            movies.fetchAllMovies();
+                            _updateGenreLists();
+                          },
                           child: const Text(
                             'Try again',
                             style: TextStyle(color: AppColors.primary),
@@ -381,6 +436,54 @@ class _HomeBodyState extends State<_HomeBody> {
     );
   }
 
+  Widget _buildMovieRow({
+    required bool             isLoading,
+    required List<MovieModel> movies,
+    required String           genre,
+  }) {
+    if (isLoading) {
+      return const SizedBox(
+        height: 260,
+        child:  _HorizontalShimmer(),
+      );
+    }
+    if (movies.isEmpty) {
+      return SizedBox(
+        height: 120,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.movie_filter_outlined,
+                color: AppColors.textMuted,
+                size:  32,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'No $genre movies found',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color:    AppColors.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return SizedBox(
+      height: 260,
+      child: ListView.separated(
+        scrollDirection:  Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        itemCount:        movies.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (_, i) => MovieCard(movie: movies[i]),
+      ),
+    );
+  }
+
   String _greeting() {
     final hour = DateTime.now().hour;
     if (hour < 12) return 'Good morning 👋';
@@ -389,9 +492,9 @@ class _HomeBodyState extends State<_HomeBody> {
   }
 }
 
-// ── Section header ────────────────────────────────────────────────────────────
+// ── Section Header ────────────────────────────────────────────────────────────
 class _SectionHeader extends StatelessWidget {
-  final String    title;
+  final String       title;
   final VoidCallback? onSeeAll;
 
   const _SectionHeader({required this.title, this.onSeeAll});
@@ -415,10 +518,7 @@ class _SectionHeader extends StatelessWidget {
             onTap: onSeeAll,
             child: const Text(
               AppStrings.seeAll,
-              style: TextStyle(
-                fontSize: 12,
-                color:    AppColors.primary,
-              ),
+              style: TextStyle(fontSize: 12, color: AppColors.primary),
             ),
           ),
         ],
@@ -427,7 +527,7 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-// ── Shimmer placeholders ──────────────────────────────────────────────────────
+// ── Shimmer ───────────────────────────────────────────────────────────────────
 class _FeaturedShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -443,12 +543,14 @@ class _FeaturedShimmer extends StatelessWidget {
 }
 
 class _HorizontalShimmer extends StatelessWidget {
+  const _HorizontalShimmer();
+
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
-      scrollDirection: Axis.horizontal,
-      padding:         const EdgeInsets.symmetric(horizontal: 16),
-      itemCount:       4,
+      scrollDirection:  Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount:        4,
       separatorBuilder: (_, __) => const SizedBox(width: 12),
       itemBuilder: (_, __) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,

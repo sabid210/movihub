@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,9 +7,9 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../../data/models/user_model.dart';
 
 class AuthProvider extends ChangeNotifier {
-  final FirebaseAuth    _auth      = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final GoogleSignIn    _googleSignIn = GoogleSignIn();
+  final FirebaseAuth      _auth         = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore    = FirebaseFirestore.instance;
+  final GoogleSignIn      _googleSignIn = GoogleSignIn();
 
   UserModel? _currentUser;
   bool       _isLoading = false;
@@ -35,11 +36,11 @@ class AuthProvider extends ChangeNotifier {
     });
   }
 
-  // ── Load user data from Firestore ─────────────────────────────────────────
+  // ── Load user from Firestore ──────────────────────────────────────────────
   Future<void> _loadUserFromFirestore(String uid) async {
     try {
       final doc = await _firestore.collection('users').doc(uid).get();
-      if (doc.exists) {
+      if (doc.exists && doc.data() != null) {
         _currentUser = UserModel.fromJson(doc.data()!);
       }
     } catch (e) {
@@ -56,7 +57,9 @@ class AuthProvider extends ChangeNotifier {
         .set(user.toJson(), SetOptions(merge: true));
   }
 
-  // ── Register ──────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  REGISTER
+  // ══════════════════════════════════════════════════════════════════════════
   Future<String?> register({
     required String name,
     required String email,
@@ -80,7 +83,7 @@ class AuthProvider extends ChangeNotifier {
 
       _currentUser = user;
       _setLoading(false);
-      return null; // no error
+      return null;
     } on FirebaseAuthException catch (e) {
       _setLoading(false);
       return _authErrorMessage(e.code);
@@ -90,7 +93,9 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ── Login ─────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  LOGIN
+  // ══════════════════════════════════════════════════════════════════════════
   Future<String?> login({
     required String email,
     required String password,
@@ -112,7 +117,9 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ── Google Sign In ────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  GOOGLE SIGN IN
+  // ══════════════════════════════════════════════════════════════════════════
   Future<String?> signInWithGoogle() async {
     _setLoading(true);
     try {
@@ -128,12 +135,9 @@ class AuthProvider extends ChangeNotifier {
         idToken:     googleAuth.idToken,
       );
 
-      final userCredential =
-          await _auth.signInWithCredential(credential);
+      final userCredential = await _auth.signInWithCredential(credential);
+      final firebaseUser   = userCredential.user!;
 
-      final firebaseUser = userCredential.user!;
-
-      // Check if new user
       final doc = await _firestore
           .collection('users')
           .doc(firebaseUser.uid)
@@ -143,8 +147,8 @@ class AuthProvider extends ChangeNotifier {
         final user = UserModel(
           uid:      firebaseUser.uid,
           name:     firebaseUser.displayName ?? 'Movie Fan',
-          email:    firebaseUser.email ?? '',
-          photoUrl: firebaseUser.photoURL ?? '',
+          email:    firebaseUser.email       ?? '',
+          photoUrl: firebaseUser.photoURL    ?? '',
         );
         await _saveUserToFirestore(user);
         _currentUser = user;
@@ -163,15 +167,23 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ── Logout ────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  LOGOUT
+  // ══════════════════════════════════════════════════════════════════════════
   Future<void> logout() async {
-    await _googleSignIn.signOut();
-    await _auth.signOut();
+    try {
+      await _googleSignIn.signOut();
+      await _auth.signOut();
+    } catch (e) {
+      debugPrint('Error logging out: $e');
+    }
     _currentUser = null;
     notifyListeners();
   }
 
-  // ── Update profile ────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  UPDATE PROFILE (name / photoUrl)
+  // ══════════════════════════════════════════════════════════════════════════
   Future<void> updateProfile({String? name, String? photoUrl}) async {
     if (_currentUser == null) return;
     _setLoading(true);
@@ -181,9 +193,14 @@ class AuthProvider extends ChangeNotifier {
         photoUrl: photoUrl,
       );
       await _saveUserToFirestore(updated);
+
       if (name != null) {
         await _auth.currentUser?.updateDisplayName(name);
       }
+      if (photoUrl != null) {
+        await _auth.currentUser?.updatePhotoURL(photoUrl);
+      }
+
       _currentUser = updated;
     } catch (e) {
       debugPrint('Error updating profile: $e');
@@ -191,7 +208,29 @@ class AuthProvider extends ChangeNotifier {
     _setLoading(false);
   }
 
-  // ── Change password ───────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  UPDATE PROFILE PHOTO (from File)
+  // ══════════════════════════════════════════════════════════════════════════
+  Future<void> updateProfilePhoto(File imageFile) async {
+    if (_currentUser == null) return;
+    _setLoading(true);
+    try {
+      // Save local file path as photoUrl
+      // (Firebase Storage integration করতে চাইলে পরে যোগ করা যাবে)
+      final localPath = imageFile.path;
+
+      final updated = _currentUser!.copyWith(photoUrl: localPath);
+      await _saveUserToFirestore(updated);
+      _currentUser = updated;
+    } catch (e) {
+      debugPrint('Error updating profile photo: $e');
+    }
+    _setLoading(false);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  CHANGE PASSWORD
+  // ══════════════════════════════════════════════════════════════════════════
   Future<String?> changePassword({
     required String currentPassword,
     required String newPassword,
@@ -201,7 +240,6 @@ class AuthProvider extends ChangeNotifier {
       final user  = _auth.currentUser!;
       final email = user.email!;
 
-      // Re-authenticate first
       final cred = EmailAuthProvider.credential(
         email:    email,
         password: currentPassword,
@@ -220,7 +258,9 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ── Forgot password ───────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  FORGOT PASSWORD
+  // ══════════════════════════════════════════════════════════════════════════
   Future<String?> sendPasswordReset({required String email}) async {
     _setLoading(true);
     try {
@@ -233,7 +273,9 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  HELPERS
+  // ══════════════════════════════════════════════════════════════════════════
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
